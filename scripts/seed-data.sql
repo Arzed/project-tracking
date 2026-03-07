@@ -1,9 +1,9 @@
 -- Insert sample team members
-INSERT INTO team_members (id, name, email, role) VALUES
-('tm1', 'John Developer', 'john@example.com', 'backend'),
-('tm2', 'Sarah Developer', 'sarah@example.com', 'frontend'),
-('tm3', 'Mike Designer', 'mike@example.com', 'design'),
-('tm4', 'Lisa Designer', 'lisa@example.com', 'design')
+INSERT INTO team_members (id, name, email, team) VALUES
+('tm1', 'John Developer', 'john@example.com', 'developer'),
+('tm2', 'Sarah Developer', 'sarah@example.com', 'developer'),
+('tm3', 'Mike Designer', 'mike@example.com', 'designer'),
+('tm4', 'Lisa Designer', 'lisa@example.com', 'designer')
 ON CONFLICT (id) DO NOTHING;
 
 -- Insert sample projects

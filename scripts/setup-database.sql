@@ -5,7 +5,7 @@ CREATE TABLE IF NOT EXISTS team_members (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name TEXT NOT NULL,
   email TEXT UNIQUE NOT NULL,
-  role TEXT NOT NULL CHECK (role IN ('project_manager', 'mobile', 'frontend', 'backend', 'design', 'iot', 'ai_engineer')),
+  team TEXT NOT NULL CHECK (team IN ('developer', 'designer')),
   status TEXT DEFAULT 'active' CHECK (status IN ('active', 'inactive')),
   created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
@@ -73,10 +73,14 @@ CREATE TABLE IF NOT EXISTS sprint_progress (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   sprint_id UUID NOT NULL REFERENCES sprints(id) ON DELETE CASCADE,
   date DATE NOT NULL,
-  completed_tasks INT DEFAULT 0,
-  total_tasks INT DEFAULT 0,
-  completed_story_points INT DEFAULT 0,
-  total_story_points INT DEFAULT 0,
+  developer_completed_tasks INT DEFAULT 0,
+  developer_total_tasks INT DEFAULT 0,
+  developer_completed_story_points INT DEFAULT 0,
+  developer_total_story_points INT DEFAULT 0,
+  designer_completed_tasks INT DEFAULT 0,
+  designer_total_tasks INT DEFAULT 0,
+  designer_completed_story_points INT DEFAULT 0,
+  designer_total_story_points INT DEFAULT 0,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
   UNIQUE(sprint_id, date)
 );
