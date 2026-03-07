@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils'
 import { BarChart3, Layout, ListTodo, Folder, Users } from 'lucide-react'
 
 const navigation = [
-  { name: 'Monitoring', href: '/', icon: Layout },
+  { name: 'Dashboard', href: '/dashboard', icon: Layout },
   { name: 'Projects', href: '/projects', icon: Folder },
   { name: 'Tasks', href: '/tasks', icon: ListTodo },
   { name: 'Analytics', href: '/analytics', icon: BarChart3 },

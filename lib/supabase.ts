@@ -10,14 +10,7 @@ export interface TeamMember {
   id: string;
   name: string;
   email: string;
-  role:
-    | 'project_manager'
-    | 'mobile'
-    | 'frontend'
-    | 'backend'
-    | 'design'
-    | 'iot'
-    | 'ai_engineer';
+  team: 'developer' | 'designer';
   avatar_url?: string;
   created_at: string;
 }
@@ -63,6 +56,14 @@ export interface SprintProgress {
   id: string;
   sprint_id: string;
   date: string;
+  developer_completed_tasks: number;
+  developer_total_tasks: number;
+  developer_completed_story_points: number;
+  developer_total_story_points: number;
+  designer_completed_tasks: number;
+  designer_total_tasks: number;
+  designer_completed_story_points: number;
+  designer_total_story_points: number;
   completed_tasks: number;
   total_tasks: number;
   completed_story_points: number;

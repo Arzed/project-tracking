@@ -12,23 +12,35 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import type { Project, Sprint, Task } from '@/lib/types'
+import type { Project, Sprint, Task, TeamMember } from '@/lib/types'
 
 export function AnalyticsPanel({ showTitle = true }: { showTitle?: boolean }) {
   const [projects, setProjects] = useState<Project[]>([])
   const [sprints, setSprints] = useState<Sprint[]>([])
   const [tasks, setTasks] = useState<Task[]>([])
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedProject, setSelectedProject] = useState<string>('')
 
   useEffect(() => {
     fetchProjects()
+    fetchTeam()
   }, [])
 
   useEffect(() => {
     if (!selectedProject) return
     fetchProjectData(selectedProject)
   }, [selectedProject])
+
+  const fetchTeam = async () => {
+    try {
+      const res = await fetch('/api/team')
+      const data = await res.json()
+      setTeamMembers(Array.isArray(data) ? data : [])
+    } catch {
+      setTeamMembers([])
+    }
+  }
 
   const fetchProjects = async () => {
     try {
@@ -90,8 +102,9 @@ export function AnalyticsPanel({ showTitle = true }: { showTitle?: boolean }) {
   const projectSprints = sprints.filter((s) => s.project_id === selectedProject)
   const projectTasks = tasks.filter((t) => projectSprints.some((s) => s.id === t.sprint_id))
 
-  const developerTasks = projectTasks.filter((t) => t.role === 'developer')
-  const designerTasks = projectTasks.filter((t) => t.role === 'designer')
+  const teamById = new Map(teamMembers.map((m) => [m.id, m.team]))
+  const developerTasks = projectTasks.filter((t) => t.assigned_to && teamById.get(t.assigned_to) === 'developer')
+  const designerTasks = projectTasks.filter((t) => t.assigned_to && teamById.get(t.assigned_to) === 'designer')
 
   const devCompleted = developerTasks.filter((t) => t.status === 'done').length
   const devTotal = developerTasks.length
@@ -232,4 +245,3 @@ export function AnalyticsPanel({ showTitle = true }: { showTitle?: boolean }) {
     </div>
   )
 }
-

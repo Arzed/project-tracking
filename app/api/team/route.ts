@@ -1,6 +1,12 @@
 import { getTeamMembers, createTeamMember, updateTeamMember, deleteTeamMember } from '@/lib/db';
 import { NextResponse } from 'next/server';
 
+const ALLOWED_TEAMS = new Set(['developer', 'designer']);
+
+function isValidTeam(value: unknown): value is 'developer' | 'designer' {
+  return typeof value === 'string' && ALLOWED_TEAMS.has(value);
+}
+
 export async function GET() {
   try {
     const members = await getTeamMembers();
@@ -17,6 +23,16 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
+    const { name, email, team } = body || {};
+
+    if (!name || !email || !team) {
+      return NextResponse.json({ error: 'name, email, team are required' }, { status: 400 });
+    }
+
+    if (!isValidTeam(team)) {
+      return NextResponse.json({ error: 'team must be developer or designer' }, { status: 400 });
+    }
+
     const member = await createTeamMember(body);
     return NextResponse.json(member, { status: 201 });
   } catch (error) {
@@ -35,6 +51,10 @@ export async function PUT(request: Request) {
 
     if (!id) {
       return NextResponse.json({ error: 'id is required' }, { status: 400 });
+    }
+
+    if (Object.prototype.hasOwnProperty.call(updates, 'team') && !isValidTeam(updates.team)) {
+      return NextResponse.json({ error: 'team must be developer or designer' }, { status: 400 });
     }
 
     const member = await updateTeamMember(id, updates);

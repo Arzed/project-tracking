@@ -239,18 +239,55 @@ export async function getSprintProgress(sprintId: string): Promise<SprintProgres
     .order('date', { ascending: true });
 
   if (error) throw error;
-  if (data && data.length > 0) return data;
+  if (data && data.length > 0) {
+    return data.map((row: any) => {
+      const devCompletedTasks = row.developer_completed_tasks ?? 0;
+      const devTotalTasks = row.developer_total_tasks ?? 0;
+      const devCompletedSP = row.developer_completed_story_points ?? 0;
+      const devTotalSP = row.developer_total_story_points ?? 0;
+      const desCompletedTasks = row.designer_completed_tasks ?? 0;
+      const desTotalTasks = row.designer_total_tasks ?? 0;
+      const desCompletedSP = row.designer_completed_story_points ?? 0;
+      const desTotalSP = row.designer_total_story_points ?? 0;
 
-  const [sprint, tasks] = await Promise.all([getSprint(sprintId), getTasks(sprintId)]);
+      return {
+        ...row,
+        developer_completed_tasks: devCompletedTasks,
+        developer_total_tasks: devTotalTasks,
+        developer_completed_story_points: devCompletedSP,
+        developer_total_story_points: devTotalSP,
+        designer_completed_tasks: desCompletedTasks,
+        designer_total_tasks: desTotalTasks,
+        designer_completed_story_points: desCompletedSP,
+        designer_total_story_points: desTotalSP,
+        completed_tasks: devCompletedTasks + desCompletedTasks,
+        total_tasks: devTotalTasks + desTotalTasks,
+        completed_story_points: devCompletedSP + desCompletedSP,
+        total_story_points: devTotalSP + desTotalSP,
+      } as SprintProgress;
+    });
+  }
+
+  const [sprint, tasks, teamMembers] = await Promise.all([getSprint(sprintId), getTasks(sprintId), getTeamMembers()]);
   if (!sprint) return [];
 
-  const totalTasks = tasks.length;
-  const completedTasks = tasks.filter((t) => t.status === 'done').length;
+  const teamById = new Map<string, TeamMember['team']>();
+  for (const m of teamMembers) {
+    if (m?.id && m.team) teamById.set(m.id, m.team);
+  }
 
-  const totalStoryPoints = tasks.reduce((sum, t) => sum + (t.story_points ?? 0), 0);
-  const completedStoryPoints = tasks
-    .filter((t) => t.status === 'done')
-    .reduce((sum, t) => sum + (t.story_points ?? 0), 0);
+  const devTasks = tasks.filter((t) => t.assigned_to && teamById.get(t.assigned_to) === 'developer');
+  const desTasks = tasks.filter((t) => t.assigned_to && teamById.get(t.assigned_to) === 'designer');
+
+  const devTotalTasks = devTasks.length;
+  const devCompletedTasks = devTasks.filter((t) => t.status === 'done').length;
+  const desTotalTasks = desTasks.length;
+  const desCompletedTasks = desTasks.filter((t) => t.status === 'done').length;
+
+  const devTotalSP = devTasks.reduce((sum, t) => sum + (t.story_points ?? 0), 0);
+  const devCompletedSP = devTasks.filter((t) => t.status === 'done').reduce((sum, t) => sum + (t.story_points ?? 0), 0);
+  const desTotalSP = desTasks.reduce((sum, t) => sum + (t.story_points ?? 0), 0);
+  const desCompletedSP = desTasks.filter((t) => t.status === 'done').reduce((sum, t) => sum + (t.story_points ?? 0), 0);
 
   const nowISO = new Date().toISOString();
   const startDate = sprint.start_date;
@@ -261,26 +298,52 @@ export async function getSprintProgress(sprintId: string): Promise<SprintProgres
       id: `computed-${sprintId}-${startDate}`,
       sprint_id: sprintId,
       date: startDate,
+      developer_completed_tasks: 0,
+      developer_total_tasks: devTotalTasks,
+      developer_completed_story_points: 0,
+      developer_total_story_points: devTotalSP,
+      designer_completed_tasks: 0,
+      designer_total_tasks: desTotalTasks,
+      designer_completed_story_points: 0,
+      designer_total_story_points: desTotalSP,
       completed_tasks: 0,
-      total_tasks: totalTasks,
+      total_tasks: devTotalTasks + desTotalTasks,
       completed_story_points: 0,
-      total_story_points: totalStoryPoints,
+      total_story_points: devTotalSP + desTotalSP,
       created_at: nowISO,
     },
     {
       id: `computed-${sprintId}-${todayDate}`,
       sprint_id: sprintId,
       date: todayDate,
-      completed_tasks: completedTasks,
-      total_tasks: totalTasks,
-      completed_story_points: completedStoryPoints,
-      total_story_points: totalStoryPoints,
+      developer_completed_tasks: devCompletedTasks,
+      developer_total_tasks: devTotalTasks,
+      developer_completed_story_points: devCompletedSP,
+      developer_total_story_points: devTotalSP,
+      designer_completed_tasks: desCompletedTasks,
+      designer_total_tasks: desTotalTasks,
+      designer_completed_story_points: desCompletedSP,
+      designer_total_story_points: desTotalSP,
+      completed_tasks: devCompletedTasks + desCompletedTasks,
+      total_tasks: devTotalTasks + desTotalTasks,
+      completed_story_points: devCompletedSP + desCompletedSP,
+      total_story_points: devTotalSP + desTotalSP,
       created_at: nowISO,
     },
   ];
 }
 
-export async function recordSprintProgress(progress: Omit<SprintProgress, 'id' | 'created_at'>) {
+export async function recordSprintProgress(
+  progress: Omit<
+    SprintProgress,
+    | 'id'
+    | 'created_at'
+    | 'completed_tasks'
+    | 'total_tasks'
+    | 'completed_story_points'
+    | 'total_story_points'
+  >
+) {
   const { data, error } = await supabase
     .from('sprint_progress')
     .insert([progress])
