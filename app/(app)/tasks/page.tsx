@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { getTasks, getProjects, getTeamMembers, getActiveSprint } from '@/lib/db';
 import { KanbanBoard } from '@/components/tasks/kanban-board';
 import { Button } from '@/components/ui/button';
@@ -14,8 +14,26 @@ export default function TasksPage() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
+  const [selectedTeam, setSelectedTeam] = useState<'all' | TeamMember['team'] | 'unassigned'>('all');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const teamMemberById = useMemo(() => {
+    const map = new Map<string, TeamMember>();
+    for (const m of teamMembers) map.set(m.id, m);
+    return map;
+  }, [teamMembers]);
+
+  const filteredTasks = useMemo(() => {
+    if (selectedTeam === 'all') return tasks;
+    if (selectedTeam === 'unassigned') return tasks.filter((t) => !t.assigned_to);
+    return tasks.filter((t) => {
+      const assigneeId = t.assigned_to;
+      if (!assigneeId) return false;
+      const member = teamMemberById.get(assigneeId);
+      return member?.team === selectedTeam;
+    });
+  }, [selectedTeam, tasks, teamMemberById]);
 
   useEffect(() => {
     const fetchInitialData = async () => {
@@ -123,6 +141,20 @@ export default function TasksPage() {
                 </select>
               </div>
 
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-2">Filter Team</label>
+                <select
+                  value={selectedTeam}
+                  onChange={(e) => setSelectedTeam(e.target.value as typeof selectedTeam)}
+                  className="w-full px-4 py-2 border border-input rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                >
+                  <option value="all">All teams</option>
+                  <option value="developer">Developer</option>
+                  <option value="designer">Designer</option>
+                  <option value="unassigned">Unassigned</option>
+                </select>
+              </div>
+
               {activeSprint && (
                 <div className="bg-muted p-4 rounded-lg">
                   <h3 className="font-semibold text-foreground">{activeSprint.name}</h3>
@@ -152,7 +184,7 @@ export default function TasksPage() {
         ) : activeSprint && tasks.length >= 0 ? (
           <div>
             <h2 className="text-xl font-bold text-foreground mb-6">Task Board</h2>
-            <KanbanBoard tasks={tasks} teamMembers={teamMembers} onTaskUpdate={handleTaskUpdate} />
+            <KanbanBoard tasks={filteredTasks} teamMembers={teamMembers} onTaskUpdate={handleTaskUpdate} />
           </div>
         ) : (
           <div className="rounded-lg border-2 border-dashed border-muted-foreground/25 p-12 text-center">
