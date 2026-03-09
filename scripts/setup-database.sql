@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   description TEXT,
   start_date DATE,
   end_date DATE,
+  actual_end_date DATE,
   status TEXT DEFAULT 'todo' CHECK (status IN ('todo', 'in_progress', 'review', 'done')),
   priority TEXT DEFAULT 'medium' CHECK (priority IN ('low', 'medium', 'high', 'urgent')),
   assigned_to UUID REFERENCES team_members(id) ON DELETE SET NULL,
@@ -57,12 +58,23 @@ CREATE TABLE IF NOT EXISTS tasks (
 
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS start_date DATE;
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS end_date DATE;
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS actual_end_date DATE;
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS duration_days INT;
 DO $$
 BEGIN
   ALTER TABLE tasks
     ADD CONSTRAINT tasks_duration_days_pos
     CHECK (duration_days IS NULL OR duration_days >= 1);
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END
+$$;
+
+DO $$
+BEGIN
+  ALTER TABLE tasks
+    ADD CONSTRAINT tasks_actual_end_date_after_start
+    CHECK (actual_end_date IS NULL OR start_date IS NULL OR actual_end_date >= start_date);
 EXCEPTION
   WHEN duplicate_object THEN NULL;
 END

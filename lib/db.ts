@@ -126,10 +126,10 @@ export async function getActiveSprint(projectId: string): Promise<Sprint | null>
     .select('*')
     .eq('project_id', projectId)
     .eq('status', 'active')
-    .single();
+    .order('start_date', { ascending: false });
 
-  if (error && error.code !== 'PGRST116') throw error;
-  return data || null;
+  if (error) throw error;
+  return data?.[0] || null;
 }
 
 export async function getSprint(id: string): Promise<Sprint | null> {

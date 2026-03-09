@@ -117,34 +117,37 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
           {sprints.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {sprints.map((sprint) => (
-                <Link key={sprint.id} href={`/projects/${project.id}/sprints/${sprint.id}`}>
-                  <Card className="cursor-pointer hover:shadow-lg transition-shadow h-full">
-                    <CardHeader>
-                      <div className="flex items-start justify-between">
-                        <CardTitle className="text-lg">{sprint.name}</CardTitle>
-                        <span
-                          className={`px-2 py-1 rounded text-xs font-semibold ${
-                            sprint.status === 'active'
-                              ? 'bg-green-100 text-green-800'
-                              : sprint.status === 'completed'
-                                ? 'bg-blue-100 text-blue-800'
-                                : 'bg-yellow-100 text-yellow-800'
-                          }`}
-                        >
-                          {sprint.status}
-                        </span>
+                <Card key={sprint.id} className="hover:shadow-lg transition-shadow h-full">
+                  <CardHeader>
+                    <div className="flex items-start justify-between gap-4">
+                      <CardTitle className="text-lg">{sprint.name}</CardTitle>
+                      <span
+                        className={`px-2 py-1 rounded text-xs font-semibold whitespace-nowrap ${
+                          sprint.status === 'active'
+                            ? 'bg-green-100 text-green-800'
+                            : sprint.status === 'completed'
+                              ? 'bg-blue-100 text-blue-800'
+                              : 'bg-yellow-100 text-yellow-800'
+                        }`}
+                      >
+                        {sprint.status}
+                      </span>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-sm text-muted-foreground space-y-4">
+                      <p>
+                        {new Date(sprint.start_date).toLocaleDateString('id-ID')} -{' '}
+                        {new Date(sprint.end_date).toLocaleDateString('id-ID')}
+                      </p>
+                      <div className="flex justify-end">
+                        <Button asChild variant="outline" size="sm">
+                          <Link href={`/projects/${project.id}/sprints/${sprint.id}/edit`}>Edit</Link>
+                        </Button>
                       </div>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="text-sm text-muted-foreground space-y-2">
-                        <p>
-                          {new Date(sprint.start_date).toLocaleDateString('id-ID')} -{' '}
-                          {new Date(sprint.end_date).toLocaleDateString('id-ID')}
-                        </p>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </Link>
+                    </div>
+                  </CardContent>
+                </Card>
               ))}
             </div>
           ) : (

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { createTask, getTeamMembers, getSprint } from '@/lib/db';
+import { createTask, getProjects, getSprints, getTeamMembers, getSprint } from '@/lib/db';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -15,18 +15,23 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Task, TeamMember, Sprint } from '@/lib/supabase';
+import { Task, TeamMember, Sprint, Project } from '@/lib/supabase';
 import Link from 'next/link';
 
 function NewTaskForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const sprintId = searchParams.get('sprintId');
+  const sprintIdFromQuery = searchParams.get('sprintId');
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [selectedProjectId, setSelectedProjectId] = useState<string>('');
+  const [sprints, setSprints] = useState<Sprint[]>([]);
+  const [selectedSprintId, setSelectedSprintId] = useState<string>('');
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
-  const [sprint, setSprint] = useState<Sprint | null>(null);
+
+  const selectedSprint = selectedSprintId ? sprints.find((s) => s.id === selectedSprintId) ?? null : null;
 
   const computeEndDate = (startDate: string, durationDays: number) => {
     const [y, m, d] = startDate.split('-').map(Number);
@@ -64,12 +69,29 @@ function NewTaskForm() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const members = await getTeamMembers();
+        const [members, projList] = await Promise.all([getTeamMembers(), getProjects()]);
         setTeamMembers(members);
+        setProjects(projList);
 
-        if (sprintId) {
-          const sprintData = await getSprint(sprintId);
-          setSprint(sprintData);
+        if (sprintIdFromQuery) {
+          const sprintFromQuery = await getSprint(sprintIdFromQuery);
+          if (sprintFromQuery) {
+            setSelectedProjectId(sprintFromQuery.project_id);
+            setSelectedSprintId(sprintFromQuery.id);
+            const sprintList = await getSprints(sprintFromQuery.project_id);
+            setSprints(sprintList);
+            return;
+          }
+        }
+
+        const firstProjectId = projList[0]?.id ?? '';
+        setSelectedProjectId(firstProjectId);
+        setSelectedSprintId('');
+        if (firstProjectId) {
+          const sprintList = await getSprints(firstProjectId);
+          setSprints(sprintList);
+        } else {
+          setSprints([]);
         }
       } catch (err) {
         console.error('Error fetching data:', err);
@@ -78,12 +100,29 @@ function NewTaskForm() {
     };
 
     fetchData();
-  }, [sprintId]);
+  }, [sprintIdFromQuery]);
+
+  const handleProjectChange = async (projectId: string) => {
+    setSelectedProjectId(projectId);
+    setSelectedSprintId('');
+    setError(null);
+    try {
+      if (!projectId) {
+        setSprints([]);
+        return;
+      }
+      const sprintList = await getSprints(projectId);
+      setSprints(sprintList);
+    } catch (err) {
+      console.error(err);
+      setError('Failed to load sprints');
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!sprintId) {
-      setError('No sprint selected');
+    if (!selectedSprintId) {
+      setError('Sprint harus dipilih');
       return;
     }
 
@@ -109,7 +148,7 @@ function NewTaskForm() {
           : '';
 
       await createTask({
-        sprint_id: sprintId,
+        sprint_id: selectedSprintId,
         title: formData.title,
         description: formData.description.trim() || undefined,
         start_date: formData.start_date || undefined,
@@ -132,28 +171,14 @@ function NewTaskForm() {
     }
   };
 
-  if (!sprintId) {
-    return (
-      <div className="container mx-auto px-4 py-8">
-        <div className="rounded-lg border border-red-200 bg-red-50 p-6">
-          <h2 className="font-semibold text-red-900">Error: No sprint ID provided</h2>
-          <p className="mt-2 text-red-700">Please select a sprint from the tasks page to add a task.</p>
-          <Button asChild className="mt-4">
-            <Link href="/tasks">Back to Tasks</Link>
-          </Button>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="max-w-2xl mx-auto">
       <Card>
         <CardHeader>
           <CardTitle>Task Details</CardTitle>
-          {sprint && (
+          {selectedSprint && (
             <p className="text-sm text-muted-foreground">
-              Adding task to sprint: <span className="font-medium text-foreground">{sprint.name}</span>
+              Adding task to sprint: <span className="font-medium text-foreground">{selectedSprint.name}</span>
             </p>
           )}
         </CardHeader>
@@ -164,6 +189,40 @@ function NewTaskForm() {
                 {error}
               </div>
             )}
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-2">
+                <Label htmlFor="project">Project</Label>
+                <Select value={selectedProjectId} onValueChange={handleProjectChange}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select project" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {projects.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>
+                        {p.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="sprint">Sprint</Label>
+                <Select value={selectedSprintId} onValueChange={setSelectedSprintId} disabled={!selectedProjectId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select sprint" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {sprints.map((s) => (
+                      <SelectItem key={s.id} value={s.id}>
+                        {s.name} ({s.status})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
 
             <div className="space-y-2">
               <Label htmlFor="title">Title</Label>
@@ -334,7 +393,7 @@ export default function NewTaskPage() {
             <Button variant="outline">Cancel</Button>
           </Link>
         </div>
-        
+
         <Suspense fallback={<div>Loading...</div>}>
           <NewTaskForm />
         </Suspense>

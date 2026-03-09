@@ -1,9 +1,11 @@
 import Link from 'next/link'
-import { getActiveSprint, getDashboardMetrics, getProjects, getSprintProgress, getTasks, getTeamMembers } from '@/lib/db'
+import { getDashboardMetrics, getProjects, getSprintProgress, getSprints, getTasks, getTeamMembers } from '@/lib/db'
 import { MetricCards } from '@/components/dashboard/metric-cards'
 import { Button } from '@/components/ui/button'
 import { AnalyticsPanel } from '@/components/analytics/analytics-panel'
 import SCurve from '@/components/s-curve'
+import { SprintProgressPanel } from '@/components/dashboard/sprint-progress-panel'
+import { ReportDownloadButton, type ReportTaskRow } from '@/components/new-components/report-download-button'
 import type { Task } from '@/lib/supabase'
 
 export const revalidate = 0
@@ -27,6 +29,20 @@ function formatDate(value?: string) {
   const dt = new Date(value)
   if (Number.isNaN(dt.getTime())) return ''
   return dt.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })
+}
+
+function parseDateUTC(value?: string) {
+  if (!value) return null
+  const [y, m, d] = value.split('-').map(Number)
+  if (!y || !m || !d) return null
+  return new Date(Date.UTC(y, m - 1, d))
+}
+
+function diffDaysUTCISO(a?: string, b?: string) {
+  const da = parseDateUTC(a)
+  const db = parseDateUTC(b)
+  if (!da || !db) return null
+  return Math.floor((da.getTime() - db.getTime()) / 86400000)
 }
 
 function formatTimeline(start?: string, end?: string) {
@@ -146,25 +162,30 @@ export default async function MonitoringPage({
   const teamById = new Map(teamMembers.map((m) => [m.id, m.team]))
   const projects = await getProjects()
   const activeProjects = projects.filter((p) => p.status === 'active')
-  const activeSprintEntries = await Promise.all(
+  const sprintEntriesNested = await Promise.all(
     activeProjects.map(async (p) => {
-      const sprint = await getActiveSprint(p.id)
-      if (!sprint) return null
-      const tasks = await getTasks(sprint.id)
-      return { sprint, tasks }
+      const sprintList = await getSprints(p.id)
+      return Promise.all(
+        sprintList.map(async (sprint) => {
+          const tasks = await getTasks(sprint.id)
+          return { sprint, tasks }
+        })
+      )
     })
   )
-  const taskRows = activeSprintEntries
-    .filter((x): x is NonNullable<typeof x> => Boolean(x))
-    .flatMap((x) =>
-      x.tasks.map((t) => ({
-        task: t,
-        sprint: x.sprint,
-      }))
-    )
+  const sprintEntries = sprintEntriesNested.flat()
+  const taskRows = sprintEntries.flatMap((x) =>
+    x.tasks.map((t) => ({
+      task: t,
+      sprint: x.sprint,
+    }))
+  )
 
-  const sprintOptions = activeSprintEntries
-    .filter((x): x is NonNullable<typeof x> => Boolean(x))
+  console.log(activeProjects)
+  console.log(sprintEntries)
+  console.log(taskRows)
+
+  const sprintOptions = sprintEntries
     .map((x) => x.sprint)
     .sort((a, b) => a.name.localeCompare(b.name))
 
@@ -202,8 +223,8 @@ export default async function MonitoringPage({
 
   const dir = order === 'asc' ? 1 : -1
   const sortedRows = filteredRows.sort((a, b) => {
-    const dateA = a.task.end_date || a.task.start_date || a.sprint.end_date || a.sprint.start_date || ''
-    const dateB = b.task.end_date || b.task.start_date || b.sprint.end_date || b.sprint.start_date || ''
+    const dateA = a.task.actual_end_date || a.task.end_date || a.task.start_date || a.sprint.end_date || a.sprint.start_date || ''
+    const dateB = b.task.actual_end_date || b.task.end_date || b.task.start_date || b.sprint.end_date || b.sprint.start_date || ''
 
     let cmp = 0
     switch (sort) {
@@ -244,6 +265,22 @@ export default async function MonitoringPage({
   const startIndex = (safePage - 1) * pageSize
   const endIndex = startIndex + pageSize
   const pagedRows = sortedRows.slice(startIndex, endIndex)
+  const reportTasks: ReportTaskRow[] = sortedRows.map(({ task, sprint }) => ({
+    id: task.id,
+    title: task.title,
+    description: task.description,
+    priority: task.priority,
+    status: task.status,
+    task_type: task.task_type,
+    assignee_name: task.assigned_to ? memberById.get(task.assigned_to) || 'Unknown' : 'Unassigned',
+    assignee_team: task.assigned_to ? teamById.get(task.assigned_to) || 'Unknown' : '—',
+    sprint_name: sprint.name,
+    start_date: task.start_date || sprint.start_date,
+    end_date: task.end_date || sprint.end_date,
+    actual_end_date: task.actual_end_date,
+    duration_days: task.duration_days ?? null,
+    story_points: task.story_points ?? null,
+  }))
 
   return (
     <main className="min-h-screen bg-background">
@@ -254,6 +291,7 @@ export default async function MonitoringPage({
             <p className="text-muted-foreground mt-2">Kurva S, progress sprint, analytics, dan daftar task</p>
           </div>
           <div className="flex flex-wrap gap-2 justify-end">
+            <ReportDownloadButton tasks={reportTasks} />
             <Button asChild variant="outline">
               <Link href="/dashboard">Dashboard</Link>
             </Button>
@@ -276,157 +314,22 @@ export default async function MonitoringPage({
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 space-y-6">
-            <SCurve
-              projectId={metrics.currentSprint?.project_id}
-              progress={progressData}
-              sprintStartDate={metrics.currentSprint?.start_date}
-              sprintEndDate={metrics.currentSprint?.end_date}
-            />
+            <div id="report-chart">
+              <SCurve
+                projectId={metrics.currentSprint?.project_id}
+                progress={progressData}
+                sprintStartDate={metrics.currentSprint?.start_date}
+                sprintEndDate={metrics.currentSprint?.end_date}
+              />
+            </div>
           </div>
 
-          <div className="space-y-4">
-            {metrics.currentSprint && (
-              <div className="bg-card border rounded-lg p-6">
-                <h3 className="font-semibold mb-4 text-foreground">Current Sprint</h3>
-                <div className="space-y-3">
-                  <div>
-                    <p className="text-sm text-muted-foreground">Sprint Name</p>
-                    <p className="font-medium text-foreground">{metrics.currentSprint.name}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Duration</p>
-                    <p className="text-sm text-foreground">
-                      {new Date(metrics.currentSprint.start_date).toLocaleDateString('id-ID')} -{' '}
-                      {new Date(metrics.currentSprint.end_date).toLocaleDateString('id-ID')}
-                    </p>
-                  </div>
-                  {metrics.sprintProgress && (
-                    <>
-                      <div>
-                        <p className="text-sm text-muted-foreground">Tasks Progress</p>
-                        <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-3">
-                          <div>
-                            <div className="flex items-center justify-between text-xs">
-                              <span className="text-muted-foreground">Developer</span>
-                              <span className="text-foreground">
-                                {metrics.sprintProgress.developer_completed_tasks}/
-                                {metrics.sprintProgress.developer_total_tasks} (
-                                {pct(
-                                  metrics.sprintProgress.developer_completed_tasks,
-                                  metrics.sprintProgress.developer_total_tasks
-                                )}
-                                %)
-                              </span>
-                            </div>
-                            <div className="w-full bg-muted rounded-full h-2 mt-1">
-                              <div
-                                className="bg-primary h-2 rounded-full"
-                                style={{
-                                  width: `${pct(
-                                    metrics.sprintProgress.developer_completed_tasks,
-                                    metrics.sprintProgress.developer_total_tasks
-                                  )}%`,
-                                }}
-                              />
-                            </div>
-                          </div>
-                          <div>
-                            <div className="flex items-center justify-between text-xs">
-                              <span className="text-muted-foreground">Designer</span>
-                              <span className="text-foreground">
-                                {metrics.sprintProgress.designer_completed_tasks}/
-                                {metrics.sprintProgress.designer_total_tasks} (
-                                {pct(
-                                  metrics.sprintProgress.designer_completed_tasks,
-                                  metrics.sprintProgress.designer_total_tasks
-                                )}
-                                %)
-                              </span>
-                            </div>
-                            <div className="w-full bg-muted rounded-full h-2 mt-1">
-                              <div
-                                className="bg-pink-500 h-2 rounded-full"
-                                style={{
-                                  width: `${pct(
-                                    metrics.sprintProgress.designer_completed_tasks,
-                                    metrics.sprintProgress.designer_total_tasks
-                                  )}%`,
-                                }}
-                              />
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                      <div>
-                        <p className="text-sm text-muted-foreground">Story Points Progress</p>
-                        <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-3">
-                          <div>
-                            <div className="flex items-center justify-between text-xs">
-                              <span className="text-muted-foreground">Developer</span>
-                              <span className="text-foreground">
-                                {metrics.sprintProgress.developer_completed_story_points}/
-                                {metrics.sprintProgress.developer_total_story_points} (
-                                {pct(
-                                  metrics.sprintProgress.developer_completed_story_points,
-                                  metrics.sprintProgress.developer_total_story_points
-                                )}
-                                %)
-                              </span>
-                            </div>
-                            <div className="w-full bg-muted rounded-full h-2 mt-1">
-                              <div
-                                className="bg-green-500 h-2 rounded-full"
-                                style={{
-                                  width: `${pct(
-                                    metrics.sprintProgress.developer_completed_story_points,
-                                    metrics.sprintProgress.developer_total_story_points
-                                  )}%`,
-                                }}
-                              />
-                            </div>
-                          </div>
-                          <div>
-                            <div className="flex items-center justify-between text-xs">
-                              <span className="text-muted-foreground">Designer</span>
-                              <span className="text-foreground">
-                                {metrics.sprintProgress.designer_completed_story_points}/
-                                {metrics.sprintProgress.designer_total_story_points} (
-                                {pct(
-                                  metrics.sprintProgress.designer_completed_story_points,
-                                  metrics.sprintProgress.designer_total_story_points
-                                )}
-                                %)
-                              </span>
-                            </div>
-                            <div className="w-full bg-muted rounded-full h-2 mt-1">
-                              <div
-                                className="bg-purple-500 h-2 rounded-full"
-                                style={{
-                                  width: `${pct(
-                                    metrics.sprintProgress.designer_completed_story_points,
-                                    metrics.sprintProgress.designer_total_story_points
-                                  )}%`,
-                                }}
-                              />
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {!metrics.currentSprint && (
-              <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 p-6 rounded-lg">
-                <p className="text-sm">Belum ada sprint aktif di project yang statusnya active.</p>
-              </div>
-            )}
+          <div id="report-sprint-progress" className="space-y-4">
+            <SprintProgressPanel defaultSprintId={metrics.currentSprint?.id} />
           </div>
         </div>
 
-        <div className="bg-card border rounded-lg">
+        <div id="report-table" className="bg-card border rounded-lg">
           <div className="flex items-center justify-between gap-4 px-6 py-4 border-b">
             <h2 className="text-xl font-semibold text-foreground">Tasks</h2>
             <Button asChild variant="outline" size="sm">
@@ -597,7 +500,28 @@ export default async function MonitoringPage({
                         <div className="text-foreground">{sprint.name}</div>
                       </td>
                       <td className="px-6 py-3 text-foreground">
-                        {formatTimeline(task.start_date || sprint.start_date, task.end_date || sprint.end_date)}
+                        <div>
+                          <div>
+                            {formatTimeline(task.start_date || sprint.start_date, task.end_date || sprint.end_date)}
+                          </div>
+                          {task.actual_end_date && (
+                            <div className="text-xs text-muted-foreground mt-1">
+                              {(() => {
+                                const target = task.end_date || sprint.end_date
+                                const delta = diffDaysUTCISO(task.actual_end_date, target) ?? 0
+                                const suffix =
+                                  target && delta !== 0
+                                    ? delta > 0
+                                      ? ` • Terlambat ${delta} hari`
+                                      : ` • Lebih cepat ${Math.abs(delta)} hari`
+                                    : target
+                                      ? ' • Tepat waktu'
+                                      : ''
+                                return `Aktual: ${formatDate(task.actual_end_date)}${suffix}`
+                              })()}
+                            </div>
+                          )}
+                        </div>
                       </td>
                       <td className="px-6 py-3 text-foreground">
                         {task.duration_days ? `${task.duration_days} hari` : '—'}

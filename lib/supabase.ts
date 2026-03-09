@@ -42,6 +42,7 @@ export interface Task {
   description?: string;
   start_date?: string;
   end_date?: string;
+  actual_end_date?: string;
   duration_days?: number;
   status: 'todo' | 'in_progress' | 'review' | 'done';
   assigned_to?: string;

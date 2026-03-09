@@ -194,8 +194,8 @@ export default function SCurve({
   projectId,
   sprintStartDate,
   sprintEndDate,
-  today = new Date(),
-  year = today.getFullYear(),
+  today,
+  year,
 }: {
   sprints?: any[]
   progress?: SprintProgress[]
@@ -205,6 +205,7 @@ export default function SCurve({
   today?: Date
   year?: number
 }) {
+  const [mounted, setMounted] = useState(false)
   const [apiData, setApiData] = useState<{
     dayData: Array<any>
     sprintData: Array<any>
@@ -216,6 +217,12 @@ export default function SCurve({
   const hasApi = Boolean(projectId)
   const hasProgress = Array.isArray(progress) && progress.length > 0
   const [view, setView] = useState("day");
+  const safeToday = today ?? new Date()
+  const safeYear = year ?? safeToday.getFullYear()
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   useEffect(() => {
     if (!projectId) return
@@ -276,10 +283,10 @@ export default function SCurve({
         })
       }
 
-      const todayMs = today.getTime()
+      const todayMs = safeToday.getTime()
       let todayDay = dayData.length > 0 ? dayData[dayData.length - 1].dayNum : 0
       if (startDt && endDt) {
-        const t = new Date(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate()))
+        const t = new Date(Date.UTC(safeToday.getFullYear(), safeToday.getMonth(), safeToday.getDate()))
         if (t.getTime() < startDt.getTime()) todayDay = 0
         else if (t.getTime() > endDt.getTime()) todayDay = dayData[dayData.length - 1].dayNum
         else todayDay = Math.min(dayData[dayData.length - 1].dayNum, diffDaysUTC(t, startDt) + 1)
@@ -291,14 +298,14 @@ export default function SCurve({
       return { sprintClamped, safeCutoffIndex: 0, dayData, todayDay }
     }
 
-    const todayMs = today.getTime();
+    const todayMs = safeToday.getTime();
     const meta = sprints
       .map((sp) => ({
         id: sp.id,
         days: sp.days,
         dates: sp.dates,
         dayRange: parseDayRange(sp.days),
-        dateRange: sp.dates ? parseSprintDateRange(sp.dates, year) : null,
+        dateRange: sp.dates ? parseSprintDateRange(sp.dates, safeYear) : null,
       }))
       .filter((x) => x.id !== undefined);
 
@@ -375,18 +382,29 @@ export default function SCurve({
       if (!sprintRow) continue;
       const end = dr.end;
       const len = Math.max(1, end - prevEnd);
+      const actualEnd = Math.min(end, Math.max(todayDay, 0));
+      const actualLen = Math.max(1, actualEnd - prevEnd);
       for (let d = prevEnd + 1; d <= end; d += 1) {
-        const f = (d - prevEnd) / len;
-        const devTarget = +(prevDevT + f * (sprintRow.targetDev - prevDevT)).toFixed(1);
-        const desTarget = +(prevDesT + f * (sprintRow.targetDes - prevDesT)).toFixed(1);
-        const developerRaw = +(prevDevA + f * (sprintRow.actualDev - prevDevA)).toFixed(1);
-        const designerRaw = +(prevDesA + f * (sprintRow.actualDes - prevDesA)).toFixed(1);
+        const fT = (d - prevEnd) / len;
+        const devTarget = +(prevDevT + fT * (sprintRow.targetDev - prevDevT)).toFixed(1);
+        const desTarget = +(prevDesT + fT * (sprintRow.targetDes - prevDesT)).toFixed(1);
+
+        let developerRaw = prevDevA;
+        let designerRaw = prevDesA;
+        if (d <= actualEnd) {
+          const fA = (d - prevEnd) / actualLen;
+          developerRaw = +(prevDevA + fA * (sprintRow.actualDev - prevDevA)).toFixed(1);
+          designerRaw = +(prevDesA + fA * (sprintRow.actualDes - prevDesA)).toFixed(1);
+        } else if (actualEnd >= prevEnd + 1) {
+          developerRaw = +sprintRow.actualDev.toFixed(1);
+          designerRaw = +sprintRow.actualDes.toFixed(1);
+        }
         dayData.push({
           dayNum: d,
           targetDev: devTarget,
-          actualDev: d <= todayDay ? developerRaw : null,
+          actualDev: developerRaw,
           targetDes: desTarget,
-          actualDes: d <= todayDay ? designerRaw : null,
+          actualDes: designerRaw,
         });
       }
       prevEnd = end;
@@ -397,7 +415,7 @@ export default function SCurve({
     }
 
     return { sprintClamped, safeCutoffIndex, dayData, todayDay };
-  }, [sprints, progress, sprintStartDate, sprintEndDate, today, year, hasProgress, apiData]);
+  }, [sprints, progress, sprintStartDate, sprintEndDate, safeToday, safeYear, hasProgress, apiData]);
 
   const isDay = view === "day";
   const chartData = isDay ? computed.dayData : computed.sprintClamped;
@@ -405,14 +423,38 @@ export default function SCurve({
     ? computed.todayDay
     : (computed.sprintClamped[computed.safeCutoffIndex] || computed.sprintClamped[computed.sprintClamped.length - 1])?.day;
 
-  const lastShown = isDay
-    ? (computed.dayData.find((x) => x.dayNum === computed.todayDay) || computed.dayData[computed.dayData.length - 1] || { targetDev: 0, actualDev: null, targetDes: 0, actualDes: null })
-    : (computed.sprintClamped[computed.safeCutoffIndex] || computed.sprintClamped[computed.sprintClamped.length - 1] || { targetDev: 0, actualDev: null, targetDes: 0, actualDes: null });
-
-  const devAhead = typeof lastShown.actualDev === "number" && lastShown.actualDev >= lastShown.targetDev;
-  const desAhead = typeof lastShown.actualDes === "number" && lastShown.actualDes >= lastShown.targetDes;
+  const ACTUAL_DEV_COLOR = '#22c55e';
+  const ACTUAL_DES_COLOR = '#eab308';
 
   const showDesignerSeries = Boolean(apiData) || !hasProgress;
+
+  if (!mounted) {
+    return (
+      <div className="bg-white p-6 md:p-8 rounded-3xl border border-zinc-200 shadow-sm overflow-hidden">
+        <div className="flex items-center justify-between mb-8">
+          <div>
+            <h3 className="text-lg font-bold text-zinc-900">Cumulative Progress</h3>
+            <p className="text-sm text-zinc-500">Tracking daily completion percentage</p>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap justify-end">
+            <div className="inline-flex rounded-lg border border-zinc-200 bg-white p-1 text-xs font-bold text-zinc-700">
+              <button type="button" className="h-8 px-3 rounded-md bg-zinc-900 text-white" disabled>
+                Hari
+              </button>
+              <button type="button" className="h-8 px-3 rounded-md text-zinc-700" disabled>
+                Sprint
+              </button>
+            </div>
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-zinc-50 rounded-lg border border-zinc-100 text-xs font-medium text-zinc-600">
+              <TrendingUp className="w-4 h-4" />
+              Loading...
+            </div>
+          </div>
+        </div>
+        <div className="h-[400px] w-full bg-zinc-50 rounded-xl border border-zinc-100" />
+      </div>
+    )
+  }
 
   return (
     <div 
@@ -454,12 +496,12 @@ export default function SCurve({
           <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
             <defs>
               <linearGradient id="colorDev" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor={devAhead ? '#10b981' : '#f43f5e'} stopOpacity={0.15}/>
-                <stop offset="95%" stopColor={devAhead ? '#10b981' : '#f43f5e'} stopOpacity={0}/>
+                <stop offset="5%" stopColor={ACTUAL_DEV_COLOR} stopOpacity={0.15}/>
+                <stop offset="95%" stopColor={ACTUAL_DEV_COLOR} stopOpacity={0}/>
               </linearGradient>
               <linearGradient id="colorDes" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor={desAhead ? '#10b981' : '#f43f5e'} stopOpacity={0.15}/>
-                <stop offset="95%" stopColor={desAhead ? '#10b981' : '#f43f5e'} stopOpacity={0}/>
+                <stop offset="5%" stopColor={ACTUAL_DES_COLOR} stopOpacity={0.15}/>
+                <stop offset="95%" stopColor={ACTUAL_DES_COLOR} stopOpacity={0}/>
               </linearGradient>
               <linearGradient id="colorTargetDev" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.1}/>
@@ -523,7 +565,7 @@ export default function SCurve({
               type="monotone"
               dataKey="actualDev"
               name="Actual Dev"
-              stroke={devAhead ? '#10b981' : '#f43f5e'}
+              stroke={ACTUAL_DEV_COLOR}
               strokeWidth={3}
               fillOpacity={1}
               fill="url(#colorDev)"
@@ -535,7 +577,7 @@ export default function SCurve({
                 type="monotone"
                 dataKey="actualDes"
                 name="Actual Des"
-                stroke={desAhead ? '#10b981' : '#f43f5e'}
+                stroke={ACTUAL_DES_COLOR}
                 strokeWidth={3}
                 fillOpacity={1}
                 fill="url(#colorDes)"

@@ -168,9 +168,9 @@ export async function GET(request: Request) {
       day: string
       sprint_id?: string
       targetDev: number
-      actualDev: number | null
+      actualDev: number
       targetDes: number
-      actualDes: number | null
+      actualDes: number
     }> = [{ day: 'Start', targetDev: 0, actualDev: 0, targetDes: 0, actualDes: 0 }]
 
     for (let i = 0; i < sprintMeta.length; i += 1) {
@@ -189,9 +189,9 @@ export async function GET(request: Request) {
         day: `S${i + 1} · ${sprintMeta[i].name}`,
         sprint_id: sprintMeta[i].id,
         targetDev: devTarget,
-        actualDev: i + 1 <= cutoffIndex ? developer : null,
+        actualDev: developer,
         targetDes: desTarget,
-        actualDes: i + 1 <= cutoffIndex ? designer : null,
+        actualDes: designer,
       })
     }
 
@@ -199,9 +199,9 @@ export async function GET(request: Request) {
     const dayData: Array<{
       dayNum: number
       targetDev: number
-      actualDev: number | null
+      actualDev: number
       targetDes: number
-      actualDes: number | null
+      actualDes: number
     }> = [{ dayNum: 0, targetDev: 0, actualDev: 0, targetDes: 0, actualDes: 0 }]
 
     let prevEndDay = 0
@@ -220,42 +220,56 @@ export async function GET(request: Request) {
         dayData.push({
           dayNum: d,
           targetDev: +prevDevT.toFixed(1),
-          actualDev: d <= todayDay ? +prevDevA.toFixed(1) : null,
+          actualDev: +prevDevA.toFixed(1),
           targetDes: +prevDesT.toFixed(1),
-          actualDes: d <= todayDay ? +prevDesA.toFixed(1) : null,
+          actualDes: +prevDesA.toFixed(1),
         })
       }
 
       const len = Math.max(1, endDay - startDay)
+      const actualEndDay = Math.min(endDay, Math.max(todayDay, 0))
+      const actualLen = Math.max(1, actualEndDay - startDay)
+      const devAAtTodayOrEnd = row.actualDev
+      const desAAtTodayOrEnd = row.actualDes
       for (let d = startDay; d <= endDay; d += 1) {
-        const f = (d - startDay) / len
-        const devTarget = +(prevDevT + f * (row.targetDev - prevDevT)).toFixed(1)
-        const desTarget = +(prevDesT + f * (row.targetDes - prevDesT)).toFixed(1)
-        const devActual = +(prevDevA + f * ((row.actualDev ?? prevDevA) - prevDevA)).toFixed(1)
-        const desActual = +(prevDesA + f * ((row.actualDes ?? prevDesA) - prevDesA)).toFixed(1)
+        const fT = (d - startDay) / len
+        const devTarget = +(prevDevT + fT * (row.targetDev - prevDevT)).toFixed(1)
+        const desTarget = +(prevDesT + fT * (row.targetDes - prevDesT)).toFixed(1)
+
+        let devActual = prevDevA
+        let desActual = prevDesA
+        if (d <= actualEndDay && d >= startDay) {
+          const fA = (d - startDay) / actualLen
+          devActual = +(prevDevA + fA * (devAAtTodayOrEnd - prevDevA)).toFixed(1)
+          desActual = +(prevDesA + fA * (desAAtTodayOrEnd - prevDesA)).toFixed(1)
+        } else if (actualEndDay >= startDay) {
+          devActual = +devAAtTodayOrEnd.toFixed(1)
+          desActual = +desAAtTodayOrEnd.toFixed(1)
+        }
+
         dayData.push({
           dayNum: d,
           targetDev: devTarget,
-          actualDev: d <= todayDay ? devActual : null,
+          actualDev: devActual,
           targetDes: desTarget,
-          actualDes: d <= todayDay ? desActual : null,
+          actualDes: desActual,
         })
       }
 
       prevEndDay = endDay
       prevDevT = row.targetDev
-      prevDevA = row.actualDev ?? prevDevA
+      prevDevA = row.actualDev
       prevDesT = row.targetDes
-      prevDesA = row.actualDes ?? prevDesA
+      prevDesA = row.actualDes
     }
 
     for (let d = prevEndDay + 1; d <= maxDay; d += 1) {
       dayData.push({
         dayNum: d,
         targetDev: +prevDevT.toFixed(1),
-        actualDev: d <= todayDay ? +prevDevA.toFixed(1) : null,
+        actualDev: +prevDevA.toFixed(1),
         targetDes: +prevDesT.toFixed(1),
-        actualDes: d <= todayDay ? +prevDesA.toFixed(1) : null,
+        actualDes: +prevDesA.toFixed(1),
       })
     }
 

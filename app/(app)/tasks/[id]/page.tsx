@@ -73,7 +73,7 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
     story_points: '',
     start_date: '',
     duration_days: '',
-    end_date: '',
+    actual_end_date: '',
   });
 
   const computedEndDate = useMemo(() => {
@@ -82,14 +82,17 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
     return computeEndDate(formData.start_date, Math.floor(duration));
   }, [formData.start_date, formData.duration_days]);
 
+  const targetEndDate = useMemo(() => {
+    if (computedEndDate) return computedEndDate;
+    return task?.end_date ?? '';
+  }, [computedEndDate, task?.end_date]);
+
   useEffect(() => {
-    if (computedEndDate && computedEndDate !== formData.end_date) {
-      setFormData((prev) => ({ ...prev, end_date: computedEndDate }));
-    }
-    if (!computedEndDate && formData.end_date) {
-      setFormData((prev) => ({ ...prev, end_date: '' }));
-    }
-  }, [computedEndDate]);
+    if (formData.status !== 'done') return;
+    if (formData.actual_end_date) return;
+    const today = new Date().toISOString().slice(0, 10);
+    setFormData((prev) => ({ ...prev, actual_end_date: today }));
+  }, [formData.status, formData.actual_end_date]);
 
   useEffect(() => {
     const load = async () => {
@@ -113,7 +116,7 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
           story_points: t.story_points != null ? String(t.story_points) : '',
           start_date: t.start_date ?? '',
           duration_days: t.duration_days != null ? String(t.duration_days) : '',
-          end_date: t.end_date ?? '',
+          actual_end_date: t.actual_end_date ?? '',
         });
       } catch (e) {
         console.error(e);
@@ -145,7 +148,16 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
 
       const durationDays = formData.duration_days ? Math.floor(Number(formData.duration_days)) : undefined;
       const startDate = formData.start_date || undefined;
-      const endDate = startDate && durationDays ? computeEndDate(startDate, durationDays) : undefined;
+      const computedTargetEndDate = startDate && durationDays ? computeEndDate(startDate, durationDays) : undefined;
+      const finalTargetEndDate = computedTargetEndDate || task?.end_date || undefined;
+      const actualEndDate =
+        formData.status === 'done'
+          ? formData.actual_end_date || finalTargetEndDate || new Date().toISOString().slice(0, 10)
+          : undefined;
+
+      if (startDate && actualEndDate && new Date(actualEndDate) < new Date(startDate)) {
+        throw new Error('Tanggal selesai tidak boleh sebelum tanggal mulai');
+      }
 
       const updated = await updateTask(taskId, {
         title: formData.title,
@@ -157,11 +169,12 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
         story_points: formData.story_points ? parseInt(formData.story_points) : undefined,
         start_date: startDate,
         duration_days: durationDays,
-        end_date: endDate,
+        end_date: finalTargetEndDate,
+        actual_end_date: actualEndDate,
       });
 
       setTask(updated);
-      setFormData((prev) => ({ ...prev, end_date: endDate ?? '' }));
+      setFormData((prev) => ({ ...prev, actual_end_date: actualEndDate ?? '' }));
       setSuccess('Task berhasil disimpan');
       router.refresh();
     } catch (e) {
@@ -347,7 +360,7 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
                   />
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-2">
                     <Label htmlFor="start_date">Tanggal Mulai</Label>
                     <Input
@@ -370,10 +383,23 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
                       placeholder="mis. 3"
                     />
                   </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <Label htmlFor="target_end_date">Target Selesai</Label>
+                    <Input id="target_end_date" type="date" value={targetEndDate} disabled />
+                  </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="end_date">Tanggal Selesai</Label>
-                    <Input id="end_date" type="date" value={formData.end_date} disabled />
+                    <Label htmlFor="actual_end_date">Tanggal Selesai Aktual</Label>
+                    <Input
+                      id="actual_end_date"
+                      type="date"
+                      value={formData.actual_end_date}
+                      onChange={(e) => setFormData({ ...formData, actual_end_date: e.target.value })}
+                      disabled={formData.status !== 'done'}
+                    />
                   </div>
                 </div>
 
