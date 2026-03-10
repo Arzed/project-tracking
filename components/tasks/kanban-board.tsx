@@ -3,9 +3,21 @@
 import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { updateTask } from '@/lib/db';
+import { deleteTask, updateTask } from '@/lib/db';
 import type { Task, TeamMember } from '@/lib/supabase';
 import Link from 'next/link';
+import { Trash2 } from 'lucide-react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 
 interface KanbanBoardProps {
   tasks: Task[];
@@ -19,6 +31,7 @@ export function KanbanBoard({ tasks, teamMembers, onTaskUpdate }: KanbanBoardPro
   const [isUpdating, setIsUpdating] = useState(false);
   const [draggingTaskId, setDraggingTaskId] = useState<string | null>(null);
   const [dragOverStatus, setDragOverStatus] = useState<Task['status'] | null>(null);
+  const [deletingTaskId, setDeletingTaskId] = useState<string | null>(null);
 
   const handleStatusChange = async (taskId: string, newStatus: Task['status']) => {
     setIsUpdating(true);
@@ -65,6 +78,18 @@ export function KanbanBoard({ tasks, teamMembers, onTaskUpdate }: KanbanBoardPro
     if (task.status === status) return;
 
     await handleStatusChange(taskId, status);
+  };
+
+  const handleDelete = async (taskId: string) => {
+    setDeletingTaskId(taskId);
+    try {
+      await deleteTask(taskId);
+      onTaskUpdate();
+    } catch (error) {
+      console.error('Failed to delete task:', error);
+    } finally {
+      setDeletingTaskId(null);
+    }
   };
 
   const getPriorityColor = (priority: string) => {
@@ -141,7 +166,7 @@ export function KanbanBoard({ tasks, teamMembers, onTaskUpdate }: KanbanBoardPro
                         <div className="space-y-3">
                           <div>
                             <h4 className="font-medium text-foreground text-sm line-clamp-2">{task.title}</h4>
-                            <div className="mt-1">
+                            <div className="mt-1 flex items-center justify-between gap-2">
                               <Link
                                 href={`/tasks/${task.id}`}
                                 className="text-xs text-primary underline underline-offset-2"
@@ -150,6 +175,37 @@ export function KanbanBoard({ tasks, teamMembers, onTaskUpdate }: KanbanBoardPro
                               >
                                 Detail
                               </Link>
+
+                              <AlertDialog>
+                                <AlertDialogTrigger asChild>
+                                  <button
+                                    type="button"
+                                    className="inline-flex items-center gap-1 text-xs text-destructive hover:underline underline-offset-2 disabled:opacity-50"
+                                    disabled={isUpdating || deletingTaskId === task.id}
+                                    onDragStart={(e) => e.preventDefault()}
+                                  >
+                                    <Trash2 className="size-3.5" />
+                                    Hapus
+                                  </button>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent>
+                                  <AlertDialogHeader>
+                                    <AlertDialogTitle>Hapus task?</AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                      Tindakan ini tidak bisa dibatalkan. Task akan dihapus permanen.
+                                    </AlertDialogDescription>
+                                  </AlertDialogHeader>
+                                  <AlertDialogFooter>
+                                    <AlertDialogCancel disabled={deletingTaskId === task.id}>Batal</AlertDialogCancel>
+                                    <AlertDialogAction
+                                      onClick={() => handleDelete(task.id)}
+                                      disabled={deletingTaskId === task.id}
+                                    >
+                                      Hapus
+                                    </AlertDialogAction>
+                                  </AlertDialogFooter>
+                                </AlertDialogContent>
+                              </AlertDialog>
                             </div>
                             {task.description && (
                               <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{task.description}</p>

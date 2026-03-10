@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, use } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { getTask, getTeamMembers, updateTask } from '@/lib/db';
+import { deleteTask, getTask, getTeamMembers, updateTask } from '@/lib/db';
 import type { Task, TeamMember } from '@/lib/supabase';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -17,6 +17,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 
 const STATUSES: Task['status'][] = ['todo', 'in_progress', 'review', 'done'];
 const PRIORITIES: Task['priority'][] = ['low', 'medium', 'high', 'urgent'];
@@ -185,6 +196,22 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
     }
   };
 
+  const handleDelete = async () => {
+    setSaving(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      await deleteTask(taskId);
+      router.push('/tasks');
+      router.refresh();
+    } catch (e) {
+      console.error(e);
+      setError(e instanceof Error ? e.message : 'Gagal menghapus task');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   if (loading) {
     return (
       <main className="min-h-screen bg-background">
@@ -222,9 +249,33 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
             <h1 className="text-3xl font-bold text-foreground">Detail Task</h1>
             <p className="text-muted-foreground mt-2">Edit informasi task</p>
           </div>
-          <Button asChild variant="outline">
-            <Link href="/tasks">Kembali</Link>
-          </Button>
+          <div className="flex items-center gap-2">
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="destructive" disabled={saving}>
+                  Hapus
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Hapus task?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Tindakan ini tidak bisa dibatalkan. Task akan dihapus permanen.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel disabled={saving}>Batal</AlertDialogCancel>
+                  <AlertDialogAction onClick={handleDelete} disabled={saving}>
+                    Hapus
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+
+            <Button asChild variant="outline">
+              <Link href="/tasks">Kembali</Link>
+            </Button>
+          </div>
         </div>
 
         <div className="max-w-2xl mx-auto">

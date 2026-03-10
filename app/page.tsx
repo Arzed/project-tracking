@@ -181,10 +181,6 @@ export default async function MonitoringPage({
     }))
   )
 
-  console.log(activeProjects)
-  console.log(sprintEntries)
-  console.log(taskRows)
-
   const sprintOptions = sprintEntries
     .map((x) => x.sprint)
     .sort((a, b) => a.name.localeCompare(b.name))
